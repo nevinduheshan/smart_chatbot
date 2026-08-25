@@ -1,5 +1,24 @@
 (function() {
-    // 1. Inject CSS Styles
+    // 1. Markdown (Links, Bold, Newlines) HTML බවට හරවන Helper Function එක
+    function parseMarkdown(text) {
+        if (!text) return '';
+        let html = text;
+
+        // **Bold** වෙනුවට <strong>
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+        // [Title](URL) වෙනුවට Clickable HTML Link (<a href="..." target="_blank">)
+        html = html.replace(/\[(.*?)\]\((https?:\/\/[^\s\)]+)\)/g, 
+            '<a href="$2" target="_blank" style="color: #0066FF; text-decoration: underline; font-weight: 600;">$1</a>'
+        );
+
+        // Line Breaks (\n) වෙනුවට <br>
+        html = html.replace(/\n/g, '<br>');
+
+        return html;
+    }
+
+    // 2. Inject CSS Styles
     const style = document.createElement('style');
     style.innerHTML = `
         .sm-chat-toggle { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: #0066FF; color: white; border: none; font-size: 26px; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 999999; transition: transform 0.2s ease; }
@@ -12,11 +31,11 @@
         .sm-chat-send { background: #0066FF; color: white; border: none; padding: 10px 16px; border-radius: 20px; cursor: pointer; font-weight: 600; font-size: 14px; }
         .sm-msg { padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; max-width: 85%; word-wrap: break-word; }
         .sm-msg-user { background: #0066FF; color: white; align-self: flex-end; border-bottom-right-radius: 2px; }
-        .sm-msg-bot { background: #E2E8F0; color: #1E293B; align-self: flex-start; border-bottom-left-radius: 2px; white-space: pre-line; }
+        .sm-msg-bot { background: #E2E8F0; color: #1E293B; align-self: flex-start; border-bottom-left-radius: 2px; }
     `;
     document.head.appendChild(style);
 
-    // 2. Inject HTML Layout
+    // 3. Inject HTML Layout
     const widgetContainer = document.createElement('div');
     widgetContainer.innerHTML = `
         <button class="sm-chat-toggle" id="sm-btn">💬</button>
@@ -36,7 +55,7 @@
     `;
     document.body.appendChild(widgetContainer);
 
-    // 3. Elements Logic & API Calling
+    // 4. Elements Logic & API Calling
     const btn = document.getElementById('sm-btn');
     const box = document.getElementById('sm-box');
     const closeBtn = document.getElementById('sm-close');
@@ -57,7 +76,7 @@
         const text = input.value.trim();
         if (!text) return;
 
-        body.innerHTML += `<div class="sm-msg sm-msg-user">${text}</div>`;
+        body.innerHTML += `<div class="sm-msg sm-msg-user">${parseMarkdown(text)}</div>`;
         input.value = '';
         body.scrollTop = body.scrollHeight;
 
@@ -72,9 +91,11 @@
                 body: JSON.stringify({ message: text })
             });
             const data = await res.json();
-            document.getElementById(loadingId).innerText = data.response;
+            
+            // 🛠️ innerText වෙනුවට innerHTML සමඟ parseMarkdown Function එක භාවිත කිරීම
+            document.getElementById(loadingId).innerHTML = parseMarkdown(data.response);
         } catch (e) {
-            document.getElementById(loadingId).innerText = "⚠️ Network connection issue. Please try again.";
+            document.getElementById(loadingId).innerHTML = "⚠️ Network connection issue. Please try again.";
         }
         body.scrollTop = body.scrollHeight;
     }
