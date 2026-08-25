@@ -70,24 +70,43 @@ def search_website_content(query: str) -> str:
     """Use this tool to perform a deep Reranked Hybrid Search across indexed website pages."""
     if not global_retriever:
         return "No website context available."
-    initial_docs = global_retriever.invoke(query)
+
+    search_query = query
+    # Phone, Contact හෝ Email ගැන අහනවා නම් Search Query එකට Keywords එකතු කිරීම
+    if any(k in query.lower() for k in ["phone", "contact", "number", "call", "email"]):
+        search_query += " +94 77 395 0883 +94 77 799 9921 info@SmartAnnualReport.com contact us"
+
+    initial_docs = global_retriever.invoke(search_query)
     if not initial_docs:
         return "No relevant website content found."
+
     doc_contents = [doc.page_content for doc in initial_docs]
+
     try:
         rerank_response = cohere_client.rerank(
-            model="rerank-v3.0", query=query, documents=doc_contents, top_n=5
+            model="rerank-v3.0",
+            query=search_query,
+            documents=doc_contents,
+            top_n=5
         )
+        
         results = []
         for hit in rerank_response.results:
             doc = initial_docs[hit.index]
             url = doc.metadata.get("source_url", "https://www.smartannualreport.com")
             title = doc.metadata.get("title", "Smart Media Page")
             results.append(f"Page Title: {title}\nPage URL: {url}\nContent:\n{doc.page_content}")
-        return "\n\n---\n\n".join(results)
-    except Exception:
-        return "\n\n---\n\n".join([f"Page URL: {d.metadata.get('source_url')}\n{d.page_content}" for d in initial_docs[:5]])
 
+        return "\n\n---\n\n".join(results)
+
+    except Exception:
+        results = []
+        for doc in initial_docs[:5]:
+            url = doc.metadata.get("source_url", "https://www.smartannualreport.com")
+            title = doc.metadata.get("title", "Smart Media Page")
+            results.append(f"Page Title: {title}\nPage URL: {url}\nContent:\n{doc.page_content}")
+        return "\n\n---\n\n".join(results)
+    
 @tool
 def query_structured_sql_data(query: str) -> str:
     """Read structured summaries of indexed web pages from SQLite DB."""
@@ -111,6 +130,12 @@ llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 prompt = ChatPromptTemplate.from_messages([
     ("system", (
         "You are the Official AI Assistant for 'Smart Media (Pvt) Limited'.\n\n"
+        "STRICT CONTACT DETAILS RULES:\n"
+        "1. When asked for phone numbers or contact details, ALWAYS provide these official numbers:\n"
+        "   - Phone Numbers: +94773950883, +94777999921\n"
+        "   - Email: info@SmartAnnualReport.com\n"
+        "   - Corporate Office: 23/2, Independence Avenue, Colombo 00700, Sri Lanka\n"
+        "   - Development Centre: 29/2, Independence Avenue, Colombo 00700, Sri Lanka\n\n"
         "STRICT RULES FOR SERVICES:\n"
         "1. When asked 'what services do you offer?', ALWAYS prioritize Smart Media's 5 Core Homepage Services:\n"
         "   - 1. Strategic Content and Storytelling\n"

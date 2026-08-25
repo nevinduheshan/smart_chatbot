@@ -4,15 +4,21 @@
         if (!text) return '';
         let html = text;
 
-        // **Bold** වෙනුවට <strong>
+        // 1. Phone Numbers එකම පේළියේ තබා ගැනීම (Line Break වීම වැළැක්වීම)
+        html = html.replace(/(\+94[\d\s]+)/g, '<span style="white-space: nowrap;">$1</span>');
+
+        // 2. **Bold** වෙනුවට <strong>
         html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 
-        // [Title](URL) වෙනුවට Clickable HTML Link (<a href="..." target="_blank">)
+        // 3. [Title](URL) වෙනුවට Clickable HTML Link
         html = html.replace(/\[(.*?)\]\((https?:\/\/[^\s\)]+)\)/g, 
             '<a href="$2" target="_blank" style="color: #0066FF; text-decoration: underline; font-weight: 600;">$1</a>'
         );
 
-        // Line Breaks (\n) වෙනුවට <br>
+        // 4. Bullet Points (* ) ලස්සනට පෙන්වීම
+        html = html.replace(/^\*\s+/gm, '• ');
+
+        // 5. Line Breaks (\n) වෙනුවට <br>
         html = html.replace(/\n/g, '<br>');
 
         return html;
