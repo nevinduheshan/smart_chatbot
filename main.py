@@ -2,6 +2,7 @@ import os
 import re
 import sqlite3
 import json
+import traceback
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -74,7 +75,7 @@ def search_website_content(query: str) -> str:
     search_query = query
     # Phone, Contact හෝ Email ගැන අහනවා නම් Search Query එකට Keywords එකතු කිරීම
     if any(k in query.lower() for k in ["phone", "contact", "number", "call", "email"]):
-        search_query += " +94 77 395 0883 +94 77 799 9921 info@SmartAnnualReport.com contact us"
+        search_query += " +94773950883 +94777999921 info@SmartAnnualReport.com contact us"
 
     initial_docs = global_retriever.invoke(search_query)
     if not initial_docs:
@@ -125,7 +126,7 @@ def query_structured_sql_data(query: str) -> str:
 tools = [search_website_content, query_structured_sql_data]
 
 # LLM Setup
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", (
@@ -145,7 +146,7 @@ prompt = ChatPromptTemplate.from_messages([
         "   - 5. Video Annual Reports\n\n"
         "2. ALWAYS include clickable Markdown source links at the end of every response:\n"
         "   Format: 🔗 **Source:** [Page Title](https://exact-url-here.com)\n"
-        "3. If details (like custom pricing) are missing, link to: [Smart Media Contact Us](https://www.smartannualreport.com/contact-us)"
+        "3. If details (like custom pricing) are missing, link to: [Smart Media Contact Us](https://www.smartannualreport.com/contact)"
     )),
     MessagesPlaceholder(variable_name="chat_history", optional=True),
     ("human", "{input}"),
@@ -153,7 +154,14 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 agent = create_tool_calling_agent(llm, tools, prompt)
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=8, handle_parsing_errors=True)
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    verbose=True,
+    max_iterations=6,            
+    handle_parsing_errors=True,     
+    early_stopping_method="generate"
+)
 
 def extract_clean_text(output):
     if isinstance(output, str):
@@ -170,8 +178,19 @@ class ChatRequest(BaseModel):
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
+        # Agent එක Call කිරීම
         raw_response = agent_executor.invoke({"input": request.message})
         clean_answer = extract_clean_text(raw_response.get("output", "Unable to process your request."))
         return {"status": "success", "response": clean_answer}
+    
     except Exception as e:
-        raise HTTPException(status_code=500, detail="⚠️ Temporary connection issue. Please try again.")
+        # 🔍 Terminal එකේ හරියටම Error එක කුමක්දැයි Print කිරීම (Debug සඳහා)
+        print("\n❌ [ERROR IN AGENT EXECUTOR]:")
+        traceback.print_exc()
+        print("----------------------------------------\n")
+        
+        # User ට Clean Fallback Message එකක් යැවීම
+        return {
+            "status": "error", 
+            "response": "⚠️ I encountered an issue processing this complex request. Please try asking in a slightly simpler way or check the API limits."
+        }
