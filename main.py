@@ -148,8 +148,8 @@ def query_structured_sql_data(query: str) -> str:
 tools = [search_website_content, query_structured_sql_data]
 
 # LLM Setup
-llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
-# llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+# llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", (
@@ -161,17 +161,17 @@ prompt = ChatPromptTemplate.from_messages([
         "   - Email: info@SmartAnnualReport.com\n"
         "   - Corporate Office: 23/2, Independence Avenue, Colombo 00700, Sri Lanka\n"
         "   - Development Centre: 29/2, Independence Avenue, Colombo 00700, Sri Lanka\n\n"
-        "STRICT RULES FOR SERVICES:\n"
-        "1. When asked 'what services do you offer?', ALWAYS prioritize Smart Media's 5 Core Homepage Services:\n"
-        "   - 1. Strategic Content and Storytelling\n"
-        "   - 2. Advisory on Global Frameworks, Standards, and Jurisdictional Compliance\n"
-        "   - 3. Investor-Grade Design and Production\n"
-        "   - 4. Digital-First and End-to-End HTML Reports (with Interactive PDF-Twins)\n"
-        "   - 5. Video Annual Reports\n\n"
-        "2. ALWAYS include clickable Markdown source links at the end of every response:\n"
+        # "STRICT RULES FOR SERVICES:\n"
+        # "1. When asked 'what services do you offer?', ALWAYS prioritize Smart Media's 5 Core Homepage Services:\n"
+        # "   - 1. Strategic Content and Storytelling\n"
+        # "   - 2. Advisory on Global Frameworks, Standards, and Jurisdictional Compliance\n"
+        # "   - 3. Investor-Grade Design and Production\n"
+        # "   - 4. Digital-First and End-to-End HTML Reports (with Interactive PDF-Twins)\n"
+        # "   - 5. Video Annual Reports\n\n"
+        "3. ALWAYS include clickable Markdown source links at the end of every response:\n"
         "   Format: 🔗 **Source:** [Page Title](https://exact-url-here.com)\n"
-        "3. If details (like custom pricing) are missing, link to: [Smart Media Contact Us](https://www.smartannualreport.com/contact)"
-        "4. DO NOT include any Source link if the information originates from an internal custom note or has 'NO_URL'."
+        "4. If details (like custom pricing) are missing, link to: [Smart Media Contact Us](https://www.smartannualreport.com/contact)"
+        "5. DO NOT include any Source link if the information originates from an internal custom note or has 'NO_URL'."
     )),
     MessagesPlaceholder(variable_name="chat_history", optional=True),
     ("human", "{input}"),
