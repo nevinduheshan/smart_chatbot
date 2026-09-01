@@ -318,7 +318,7 @@ async def add_text_endpoint(request: RawTextRequest):
         raise HTTPException(status_code=400, detail="Title and Content cannot be empty.")
 
     try:
-        # 💡 URL එකක් වෙනුවට "NO_URL" කියා යෙදීම
+        # 💡 put NO_URL if not any URL
         manual_url = "NO_URL"
         display_title = f"{title} (Internal Note)"
 

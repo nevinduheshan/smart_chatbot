@@ -390,7 +390,7 @@ for msg in st.session_state.messages:
 
 # Check if website is indexed before enabling chat
 if st.session_state.retriever is None:
-    st.warning("👈 please පළමුව Sidebar එකෙන් Website URL එක ලබාදී 'Scrape & Re-build Index' button එක click කරන්න.")
+    st.warning("👈 please index a website first to enable the AI chat functionality.")
     # if no website has been indexed yet, disable the chat input
     user_input = st.chat_input("Please index a website first...", disabled=True, key="disabled_chat")
 else:
