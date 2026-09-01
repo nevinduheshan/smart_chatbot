@@ -26,7 +26,7 @@ load_dotenv()
 
 app = FastAPI(title="Smart Media RAG AI API")
 
-# Cross-Origin Resource Sharing (CORS) - ඕනෑම Website එකක සිට Call කිරීමට ඉඩ දීම
+# Cross-Origin Resource Sharing (CORS) - Allow calling from any website
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -90,7 +90,7 @@ def search_website_content(query: str) -> str:
         return "No website context available."
 
     search_query = query
-    # Phone, Contact හෝ Email ගැන අහනවා නම් Search Query එකට Keywords එකතු කිරීම
+    # If asking about Phone, Contact or Email, add keywords to Search Query
     if any(k in query.lower() for k in ["phone", "contact", "number", "call", "email"]):
         search_query += " +94773950883 +94777999921 info@SmartAnnualReport.com contact us"
 
@@ -114,7 +114,7 @@ def search_website_content(query: str) -> str:
             url = doc.metadata.get("source_url", "NO_URL")
             title = doc.metadata.get("title", "Smart Media Page")
             
-            # 💡 Custom Text එකක් නම් URL එකක් නොමැති බව AI එකට දැනුම් දීම
+            # 💡 If custom text, notify AI that no URL is attached
             if url == "NO_URL" or not url:
                 results.append(f"Content (Internal Note - NO URL ATTACHED):\n{doc.page_content}")
             else:
@@ -211,18 +211,18 @@ class RawTextRequest(BaseModel):
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
-        # Agent එක Call කිරීම
+        # Invoking the agent
         raw_response = agent_executor.invoke({"input": request.message})
         clean_answer = extract_clean_text(raw_response.get("output", "Unable to process your request."))
         return {"status": "success", "response": clean_answer}
     
     except Exception as e:
-        # 🔍 Terminal එකේ හරියටම Error එක කුමක්දැයි Print කිරීම (Debug සඳහා)
+        # 🔍 Print the exact error in the terminal for debugging purposes
         print("\n❌ [ERROR IN AGENT EXECUTOR]:")
         traceback.print_exc()
         print("----------------------------------------\n")
         
-        # User ට Clean Fallback Message එකක් යැවීම
+        # User-friendly Error Message Return 
         return {
             "status": "error", 
             "response": "⚠️ I encountered an issue processing this complex request. Please try asking in a slightly simpler way or check the API limits."
@@ -233,14 +233,14 @@ async def add_url_endpoint(request: IndexRequest):
     """Crawl a new URL, persist documents to Vector DB & SQLite, and reload memory live."""
     global global_retriever
     
-    # 🔒 1. Domain Lock: Smart Media වෙබ් අඩවියට පමණක් සීමා කිරීම
+    # 🔒 1. Domain Lock: Smart Media 
     target_url = request.url.strip()
     if not target_url.startswith("https://www.smartannualreport.com"):
         raise HTTPException(status_code=403, detail="Access Denied: You can only index pages from https://www.smartannualreport.com")
 
     try:
         firecrawl_app = FirecrawlApp(api_key=os.getenv("FIRECRAWL_API_KEY"))
-        # 2. Limit එක 2කට අඩු කිරීම (මොකද අපි දෙන්නේ Specific Page එකක් නිසා මුළු සයිට් එකම යන්න ඕනේ නෑ)
+        # 2. reduce the limit to 2 pages and set a poll interval of 2 seconds for faster response
         crawl_result = firecrawl_app.crawl(
             url=target_url,
             limit=2, 
