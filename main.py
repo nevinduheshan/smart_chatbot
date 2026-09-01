@@ -110,9 +110,14 @@ def search_website_content(query: str) -> str:
         results = []
         for hit in rerank_response.results:
             doc = initial_docs[hit.index]
-            url = doc.metadata.get("source_url", "https://www.smartannualreport.com")
+            url = doc.metadata.get("source_url", "NO_URL")
             title = doc.metadata.get("title", "Smart Media Page")
-            results.append(f"Page Title: {title}\nPage URL: {url}\nContent:\n{doc.page_content}")
+            
+            # 💡 Custom Text එකක් නම් URL එකක් නොමැති බව AI එකට දැනුම් දීම
+            if url == "NO_URL" or not url:
+                results.append(f"Content (Internal Note - NO URL ATTACHED):\n{doc.page_content}")
+            else:
+                results.append(f"Page Title: {title}\nPage URL: {url}\nContent:\n{doc.page_content}")
 
         return "\n\n---\n\n".join(results)
 
@@ -164,6 +169,7 @@ prompt = ChatPromptTemplate.from_messages([
         "2. ALWAYS include clickable Markdown source links at the end of every response:\n"
         "   Format: 🔗 **Source:** [Page Title](https://exact-url-here.com)\n"
         "3. If details (like custom pricing) are missing, link to: [Smart Media Contact Us](https://www.smartannualreport.com/contact)"
+        "4. DO NOT include any Source link if the information originates from an internal custom note or has 'NO_URL'."
     )),
     MessagesPlaceholder(variable_name="chat_history", optional=True),
     ("human", "{input}"),
@@ -310,18 +316,15 @@ async def add_text_endpoint(request: RawTextRequest):
         raise HTTPException(status_code=400, detail="Title and Content cannot be empty.")
 
     try:
-        # Synthetic URL format for manual entries
-        clean_slug = re.sub(r'[^a-zA-Z0-9]', '-', title.lower())
-        manual_url = f"https://www.smartannualreport.com/custom-note/{clean_slug}"
-        display_title = f"[Custom Knowledge] {title}"
+        # 💡 URL එකක් වෙනුවට "NO_URL" කියා යෙදීම
+        manual_url = "NO_URL"
+        display_title = f"{title} (Internal Note)"
 
-        # 1. Create Document Object
         doc = Document(
             page_content=text,
             metadata={"source_url": manual_url, "title": display_title}
         )
 
-        # 2. Save into SQLite Database
         conn = sqlite3.connect("website_data.db")
         cursor = conn.cursor()
         cursor.execute(
@@ -331,7 +334,6 @@ async def add_text_endpoint(request: RawTextRequest):
         conn.commit()
         conn.close()
 
-        # 3. Chunking & Indexing to Chroma Vector DB
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=300)
         splits = text_splitter.split_documents([doc])
 
@@ -339,10 +341,7 @@ async def add_text_endpoint(request: RawTextRequest):
         embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
         vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
         
-        # Live append into Vector DB
         vectorstore.add_documents(splits)
-
-        # Reload Retriever Memory Live
         global_retriever = load_existing_retriever()
 
         return {"status": "success", "message": f"Successfully indexed custom text '{title}' into AI Memory!"}
