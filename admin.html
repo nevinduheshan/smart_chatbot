@@ -11,19 +11,25 @@
         .card { background: #FFFFFF; padding: 25px; border-radius: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 24px; border: 1px solid #E2E8F0; }
         h1 { font-size: 24px; color: #0066FF; margin-top: 0; }
         h2 { font-size: 18px; margin-bottom: 12px; }
-        .form-group { display: flex; gap: 10px; }
-        input[type="text"] { flex: 1; padding: 12px 16px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 15px; outline: none; }
-        input[type="text"]:focus { border-color: #0066FF; }
-        button { background: #0066FF; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 15px; transition: background 0.2s; }
+        
+        .url-input-group { display: flex; align-items: center; border: 1px solid #CBD5E1; border-radius: 8px; overflow: hidden; background: #F8FAFC; margin-bottom: 15px; }
+        .url-prefix { padding: 12px 16px; background: #E2E8F0; color: #475569; font-weight: 600; font-size: 15px; border-right: 1px solid #CBD5E1; }
+        .url-path-input { flex: 1; padding: 12px 16px; border: none; font-size: 15px; outline: none; background: #FFFFFF; }
+        
+        input[type="text"], textarea { width: 100%; padding: 12px 16px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 15px; outline: none; margin-bottom: 12px; }
+        textarea { height: 120px; resize: vertical; }
+        
+        button { background: #0066FF; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 15px; transition: background 0.2s; width: 100%; }
         button:hover { background: #0052CC; }
         button:disabled { background: #94A3B8; cursor: not-allowed; }
+        
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
         .stat-box { background: #EFF6FF; border: 1px solid #BFDBFE; padding: 16px; border-radius: 10px; text-align: center; }
         .stat-number { font-size: 32px; font-weight: 700; color: #0066FF; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { text-align: left; padding: 12px; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
         th { background: #F1F5F9; color: #475569; }
-        .status-msg { margin-top: 15px; font-weight: 600; font-size: 14px; }
+        .status-msg { margin-top: 12px; font-weight: 600; font-size: 14px; text-align: center; }
         .success { color: #16A34A; }
         .error { color: #DC2626; }
     </style>
@@ -36,7 +42,7 @@
     <div class="stats-grid">
         <div class="stat-box">
             <div class="stat-number" id="total-pages">0</div>
-            <div>Active Knowledge Pages</div>
+            <div>Active Knowledge Entries</div>
         </div>
         <div class="stat-box">
             <div class="stat-number" style="color: #16A34A;">Online</div>
@@ -44,23 +50,37 @@
         </div>
     </div>
 
+    <!-- Section 1: Page Crawl -->
     <div class="card">
-        <h2>🔗 Add New Page / Link to AI Knowledge Base</h2>
-        <p style="font-size: 14px; color: #64748B; margin-top: 0;">Enter a URL to crawl via Firecrawl and instantly append into the active Chroma Vector DB.</p>
-        <div class="form-group">
-            <input type="text" id="url-input" placeholder="https://www.smartannualreport.com/services">
-            <button id="add-btn" onclick="addNewURL()">Process & Index URL</button>
+        <h2>🌐 Add New Smart Media Page (URL)</h2>
+        <div class="url-input-group">
+            <div class="url-prefix">https://www.smartannualreport.com/</div>
+            <input type="text" id="url-path-input" class="url-path-input" placeholder="services/new-service">
         </div>
-        <div id="status-message" class="status-msg"></div>
+        <button id="add-url-btn" onclick="addNewURL()">Process & Index Page</button>
+        <div id="url-status-message" class="status-msg"></div>
     </div>
 
+    <!-- Section 2: Direct Text / Paragraph Input -->
     <div class="card">
-        <h2>📚 Currently Indexed Pages</h2>
+        <h2>📝 Add Direct Knowledge / Custom Paragraph</h2>
+        <p style="font-size: 14px; color: #64748B; margin-top: 0;">Add custom notices, updates, or specific answers directly into the Chatbot's active memory.</p>
+        
+        <input type="text" id="text-title-input" placeholder="Title / Topic (e.g., Special Holiday Rates 2026)">
+        <textarea id="text-content-input" placeholder="Enter the exact paragraph or details here..."></textarea>
+        
+        <button id="add-text-btn" onclick="addNewText()">Save & Index Knowledge Paragraph</button>
+        <div id="text-status-message" class="status-msg"></div>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+        <h2>📚 Currently Indexed Knowledge Items</h2>
         <table>
             <thead>
                 <tr>
-                    <th>Page Title</th>
-                    <th>Source URL</th>
+                    <th>Entry Title</th>
+                    <th>Source Identifier</th>
                 </tr>
             </thead>
             <tbody id="pages-table-body">
@@ -72,6 +92,7 @@
 
 <script>
     const API_BASE = "http://localhost:8000/api/admin";
+    const BASE_DOMAIN = "https://www.smartannualreport.com/";
 
     async function loadStats() {
         try {
@@ -84,7 +105,7 @@
             tbody.innerHTML = '';
 
             if (!data.pages || data.pages.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="2">No pages stored in database yet.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="2">No entries stored in database yet.</td></tr>';
                 return;
             }
 
@@ -102,46 +123,83 @@
     }
 
     async function addNewURL() {
-        const urlInput = document.getElementById('url-input');
-        const btn = document.getElementById('add-btn');
-        const msg = document.getElementById('status-message');
-
-        const url = urlInput.value.trim();
-        if (!url) {
-            alert("Please enter a valid URL!");
-            return;
-        }
+        const pathInput = document.getElementById('url-path-input').value.trim();
+        const btn = document.getElementById('add-url-btn');
+        const msg = document.getElementById('url-status-message');
+        
+        const cleanPath = pathInput.replace(/^\/+/, '');
+        const fullUrl = BASE_DOMAIN + cleanPath;
 
         btn.disabled = true;
         btn.innerText = "Indexing Content... ⏳";
-        msg.innerText = "Crawling page and persisting to Vector DB. Please wait...";
+        msg.innerText = "Crawling page and updating AI Memory...";
         msg.className = "status-msg";
 
         try {
             const res = await fetch(`${API_BASE}/add-url`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: url })
+                body: JSON.stringify({ url: fullUrl })
             });
-
             const data = await res.json();
 
             if (res.ok) {
                 msg.innerText = "✅ " + data.message;
                 msg.className = "status-msg success";
-                urlInput.value = '';
+                document.getElementById('url-path-input').value = '';
                 loadStats();
             } else {
-                msg.innerText = "❌ Error: " + (data.detail || "Failed to index URL.");
+                msg.innerText = "❌ Error: " + (data.detail || "Failed to index.");
                 msg.className = "status-msg error";
             }
         } catch (e) {
             msg.innerText = "⚠️ Server communication error.";
             msg.className = "status-msg error";
         }
-
         btn.disabled = false;
-        btn.innerText = "Process & Index URL";
+        btn.innerText = "Process & Index Page";
+    }
+
+    async function addNewText() {
+        const title = document.getElementById('text-title-input').value.trim();
+        const text = document.getElementById('text-content-input').value.trim();
+        const btn = document.getElementById('add-text-btn');
+        const msg = document.getElementById('text-status-message');
+
+        if (!title || !text) {
+            alert("Please provide both Title and Paragraph content!");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Saving Knowledge... ⏳";
+        msg.innerText = "Converting text to Vector Embeddings and updating DB...";
+        msg.className = "status-msg";
+
+        try {
+            const res = await fetch(`${API_BASE}/add-text`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: title, text: text })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                msg.innerText = "✅ " + data.message;
+                msg.className = "status-msg success";
+                document.getElementById('text-title-input').value = '';
+                document.getElementById('text-content-input').value = '';
+                loadStats();
+            } else {
+                msg.innerText = "❌ Error: " + (data.detail || "Failed to index text.");
+                msg.className = "status-msg error";
+            }
+        } catch (e) {
+            msg.innerText = "⚠️ Server communication error.";
+            msg.className = "status-msg error";
+        }
+        btn.disabled = false;
+        btn.innerText = "Save & Index Knowledge Paragraph";
     }
 
     loadStats();

@@ -195,6 +195,11 @@ class ChatRequest(BaseModel):
 class IndexRequest(BaseModel):
     url: str
 
+class RawTextRequest(BaseModel):
+    title: str
+    text: str
+
+
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
@@ -291,3 +296,57 @@ async def get_stats_endpoint():
         }
     except Exception:
         return {"total_pages": 0, "pages": []}
+
+
+@app.post("/api/admin/add-text")
+async def add_text_endpoint(request: RawTextRequest):
+    """Admin endpoint to manually add custom text/paragraphs into Vector DB & SQLite."""
+    global global_retriever
+    
+    title = request.title.strip()
+    text = request.text.strip()
+    
+    if not title or not text:
+        raise HTTPException(status_code=400, detail="Title and Content cannot be empty.")
+
+    try:
+        # Synthetic URL format for manual entries
+        clean_slug = re.sub(r'[^a-zA-Z0-9]', '-', title.lower())
+        manual_url = f"https://www.smartannualreport.com/custom-note/{clean_slug}"
+        display_title = f"[Custom Knowledge] {title}"
+
+        # 1. Create Document Object
+        doc = Document(
+            page_content=text,
+            metadata={"source_url": manual_url, "title": display_title}
+        )
+
+        # 2. Save into SQLite Database
+        conn = sqlite3.connect("website_data.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO website_pages (url, title, extracted_json) VALUES (?, ?, ?)",
+            (manual_url, display_title, json.dumps({"summary": text[:500]}))
+        )
+        conn.commit()
+        conn.close()
+
+        # 3. Chunking & Indexing to Chroma Vector DB
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=300)
+        splits = text_splitter.split_documents([doc])
+
+        persist_dir = "./chroma_db_website"
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
+        
+        # Live append into Vector DB
+        vectorstore.add_documents(splits)
+
+        # Reload Retriever Memory Live
+        global_retriever = load_existing_retriever()
+
+        return {"status": "success", "message": f"Successfully indexed custom text '{title}' into AI Memory!"}
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to index text: {str(e)}")
