@@ -13,6 +13,7 @@ import cohere
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.tools import tool
@@ -148,6 +149,7 @@ tools = [search_website_content, query_structured_sql_data]
 
 # LLM Setup
 llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
+# llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", (
