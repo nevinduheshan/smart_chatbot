@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Media AI - Knowledge Dashboard</title>
+    <style>
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #F8FAFC; margin: 0; padding: 40px 20px; color: #0F172A; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .card { background: #FFFFFF; padding: 25px; border-radius: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 24px; border: 1px solid #E2E8F0; }
+        h1 { font-size: 24px; color: #0066FF; margin-top: 0; }
+        h2 { font-size: 18px; margin-bottom: 12px; }
+        .form-group { display: flex; gap: 10px; }
+        input[type="text"] { flex: 1; padding: 12px 16px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 15px; outline: none; }
+        input[type="text"]:focus { border-color: #0066FF; }
+        button { background: #0066FF; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 15px; transition: background 0.2s; }
+        button:hover { background: #0052CC; }
+        button:disabled { background: #94A3B8; cursor: not-allowed; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-box { background: #EFF6FF; border: 1px solid #BFDBFE; padding: 16px; border-radius: 10px; text-align: center; }
+        .stat-number { font-size: 32px; font-weight: 700; color: #0066FF; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
+        th { background: #F1F5F9; color: #475569; }
+        .status-msg { margin-top: 15px; font-weight: 600; font-size: 14px; }
+        .success { color: #16A34A; }
+        .error { color: #DC2626; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>⚙️ Smart Media AI - RAG Knowledge Dashboard</h1>
+
+    <div class="stats-grid">
+        <div class="stat-box">
+            <div class="stat-number" id="total-pages">0</div>
+            <div>Active Knowledge Pages</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-number" style="color: #16A34A;">Online</div>
+            <div>API Engine Status</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🔗 Add New Page / Link to AI Knowledge Base</h2>
+        <p style="font-size: 14px; color: #64748B; margin-top: 0;">Enter a URL to crawl via Firecrawl and instantly append into the active Chroma Vector DB.</p>
+        <div class="form-group">
+            <input type="text" id="url-input" placeholder="https://www.smartannualreport.com/services">
+            <button id="add-btn" onclick="addNewURL()">Process & Index URL</button>
+        </div>
+        <div id="status-message" class="status-msg"></div>
+    </div>
+
+    <div class="card">
+        <h2>📚 Currently Indexed Pages</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Page Title</th>
+                    <th>Source URL</th>
+                </tr>
+            </thead>
+            <tbody id="pages-table-body">
+                <tr><td colspan="2">Loading database items...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "http://localhost:8000/api/admin";
+
+    async function loadStats() {
+        try {
+            const res = await fetch(`${API_BASE}/stats`);
+            const data = await res.json();
+            
+            document.getElementById('total-pages').innerText = data.total_pages;
+
+            const tbody = document.getElementById('pages-table-body');
+            tbody.innerHTML = '';
+
+            if (!data.pages || data.pages.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2">No pages stored in database yet.</td></tr>';
+                return;
+            }
+
+            data.pages.forEach(p => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${p.title}</strong></td>
+                        <td><a href="${p.url}" target="_blank" style="color:#0066FF; text-decoration:none;">${p.url}</a></td>
+                    </tr>
+                `;
+            });
+        } catch (e) {
+            console.error("Failed to load dashboard stats:", e);
+        }
+    }
+
+    async function addNewURL() {
+        const urlInput = document.getElementById('url-input');
+        const btn = document.getElementById('add-btn');
+        const msg = document.getElementById('status-message');
+
+        const url = urlInput.value.trim();
+        if (!url) {
+            alert("Please enter a valid URL!");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Indexing Content... ⏳";
+        msg.innerText = "Crawling page and persisting to Vector DB. Please wait...";
+        msg.className = "status-msg";
+
+        try {
+            const res = await fetch(`${API_BASE}/add-url`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: url })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                msg.innerText = "✅ " + data.message;
+                msg.className = "status-msg success";
+                urlInput.value = '';
+                loadStats();
+            } else {
+                msg.innerText = "❌ Error: " + (data.detail || "Failed to index URL.");
+                msg.className = "status-msg error";
+            }
+        } catch (e) {
+            msg.innerText = "⚠️ Server communication error.";
+            msg.className = "status-msg error";
+        }
+
+        btn.disabled = false;
+        btn.innerText = "Process & Index URL";
+    }
+
+    loadStats();
+</script>
+
+</body>
+</html>
