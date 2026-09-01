@@ -390,11 +390,11 @@ for msg in st.session_state.messages:
 
 # Check if website is indexed before enabling chat
 if st.session_state.retriever is None:
-    st.warning("👈 කරුණාකර පළමුව Sidebar එකෙන් Website URL එක ලබාදී 'Scrape & Re-build Index' button එක click කරන්න.")
-    # Website එක Scrape කරලා නැත්නම් Chat එක Disable කරනවා
+    st.warning("👈 please පළමුව Sidebar එකෙන් Website URL එක ලබාදී 'Scrape & Re-build Index' button එක click කරන්න.")
+    # if no website has been indexed yet, disable the chat input
     user_input = st.chat_input("Please index a website first...", disabled=True, key="disabled_chat")
 else:
-    # Website එක Scrape කරලා නම් Chat එක Enable කරනවා
+    # if a website has been indexed, enable the chat input
     user_input = st.chat_input("Ask anything about the indexed website...", key="enabled_chat")
 
 if user_input:
