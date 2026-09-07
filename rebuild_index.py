@@ -51,7 +51,8 @@ try:
         limit=20,
         poll_interval=2,
         scrape_options={'formats': ['markdown']},
-        exclude_paths=['*/reports/*', '*/annual-report/*']
+        # 💡 Fixed Regex Syntax for RE2 Engine
+        exclude_paths=['.*/reports/.*', '.*/annual-report/.*']
     )
 except Exception as e:
     print(f"❌ Firecrawl Error: {e}")
@@ -64,7 +65,6 @@ if not page_data_list:
     exit()
 
 documents = []
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 for page in page_data_list:
     markdown_text = page.get("markdown", "") if isinstance(page, dict) else getattr(page, "markdown", "")
@@ -81,7 +81,7 @@ for page in page_data_list:
         )
         documents.append(doc)
 
-        # Extract Summary & Save to SQLite
+        # Save to SQLite
         cursor.execute(
             "INSERT OR REPLACE INTO website_pages (url, title, extracted_json) VALUES (?, ?, ?)",
             (page_url, page_title, json.dumps({"summary": markdown_text[:500]}))
