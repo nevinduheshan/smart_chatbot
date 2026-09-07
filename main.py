@@ -8,7 +8,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from firecrawl import FirecrawlApp
 from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, File, UploadFile
 
+import time
+import pypdf
 import cohere
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -79,6 +82,7 @@ def load_existing_retriever():
 @app.on_event("startup")
 def startup_event():
     global global_retriever
+    init_sql_db()
     global_retriever = load_existing_retriever()
     print("✅ Vector Database and Retriever successfully loaded on startup!")
 
@@ -154,24 +158,30 @@ llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 prompt = ChatPromptTemplate.from_messages([
     ("system", (
         "You are the Official AI Assistant for 'Smart Media (Pvt) Limited'.\n\n"
+
         "STRICT CONTACT DETAILS RULES:\n"
         "1. ONLY include full contact details (Phone numbers, Email, Physical Addresses) when the user EXPLICITLY asks for contact information, phone numbers, address, or location.\n"
-        "2. NEVER append 'Contact Us' sections, phone numbers, or addresses at the end of general answers (such as questions about services, architecture, or technical topics).\n\n"
+        "2. NEVER append 'Contact Us' sections, phone numbers, or addresses at the end of general answers (such as questions about services, architecture, or technical topics).\n"
+        "   Official Details:\n"
         "   - Phone Numbers: +94773950883, +94777999921\n"
         "   - Email: info@SmartAnnualReport.com\n"
         "   - Corporate Office: 23/2, Independence Avenue, Colombo 00700, Sri Lanka\n"
         "   - Development Centre: 29/2, Independence Avenue, Colombo 00700, Sri Lanka\n\n"
-        # "STRICT RULES FOR SERVICES:\n"
-        # "1. When asked 'what services do you offer?', ALWAYS prioritize Smart Media's 5 Core Homepage Services:\n"
-        # "   - 1. Strategic Content and Storytelling\n"
-        # "   - 2. Advisory on Global Frameworks, Standards, and Jurisdictional Compliance\n"
-        # "   - 3. Investor-Grade Design and Production\n"
-        # "   - 4. Digital-First and End-to-End HTML Reports (with Interactive PDF-Twins)\n"
-        # "   - 5. Video Annual Reports\n\n"
-        "3. ALWAYS include clickable Markdown source links at the end of every response:\n"
-        "   Format: 🔗 **Source:** [Page Title](https://exact-url-here.com)\n"
-        "4. If details (like custom pricing) are missing, link to: [Smart Media Contact Us](https://www.smartannualreport.com/contact)"
-        "5. DO NOT include any Source link if the information originates from an internal custom note or has 'NO_URL'."
+
+        "STRICT RULES FOR SERVICES:\n"
+        "1. When asked 'what services do you offer?', ALWAYS prioritize Smart Media's 5 Core Homepage Services:\n"
+        "   1. Strategic Content and Storytelling\n"
+        "   2. Advisory on Global Frameworks, Standards, and Jurisdictional Compliance\n"
+        "   3. Investor-Grade Design and Production\n"
+        "   4. Digital-First and End-to-End HTML Reports (with Interactive PDF-Twins)\n"
+        "   5. Video Annual Reports\n\n"
+
+        "STRICT LINK & CITATION RULES:\n"
+        "1. NEVER construct, guess, fabricate, or invent sub-URLs (e.g., NEVER write /why-choose-us or /about-us unless explicitly provided in tool output).\n"
+        "2. You MUST strictly use the EXACT URL provided under 'EXACT MANDATORY URL' or 'Page URL' in the tool response.\n"
+        "3. DO NOT include any Source link if the information originates from an internal custom note or has 'NO_URL'.\n"
+        "4. Format for valid links: 🔗 **Source:** [Page Title](exact-url-from-tool)\n"
+        "5. If requested details (like custom pricing) are missing, link strictly to: [Smart Media Contact Us](https://www.smartannualreport.com/contact)\n"
     )),
     MessagesPlaceholder(variable_name="chat_history", optional=True),
     ("human", "{input}"),
@@ -318,20 +328,19 @@ async def add_text_endpoint(request: RawTextRequest):
         raise HTTPException(status_code=400, detail="Title and Content cannot be empty.")
 
     try:
-        # 💡 put NO_URL if not any URL
-        manual_url = "NO_URL"
+        unique_note_id = f"NO_URL_NOTE_{int(time.time())}"
         display_title = f"{title} (Internal Note)"
 
         doc = Document(
             page_content=text,
-            metadata={"source_url": manual_url, "title": display_title}
+            metadata={"source_url": unique_note_id, "title": display_title}
         )
 
         conn = sqlite3.connect("website_data.db")
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR REPLACE INTO website_pages (url, title, extracted_json) VALUES (?, ?, ?)",
-            (manual_url, display_title, json.dumps({"summary": text[:500]}))
+            (unique_note_id, display_title, json.dumps({"summary": text[:500]}))
         )
         conn.commit()
         conn.close()
@@ -351,3 +360,61 @@ async def add_text_endpoint(request: RawTextRequest):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to index text: {str(e)}")
+
+@app.post("/api/admin/add-pdf")
+async def add_pdf_endpoint(file: UploadFile = File(...)):
+    """Admin endpoint to upload and dynamically index PDF files into Vector DB & SQLite."""
+    global global_retriever
+
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
+
+    try:
+        # 1. Read PDF text using pypdf
+        pdf_reader = pypdf.PdfReader(file.file)
+        extracted_text = ""
+        for page in pdf_reader.pages:
+            text = page.extract_text()
+            if text:
+                extracted_text += text + "\n\n"
+
+        if not extracted_text.strip():
+            raise HTTPException(status_code=400, detail="Could not extract readable text from PDF (it might be a scanned image).")
+
+        # 2. Unique Identifier & Document Object
+        pdf_id = f"NO_URL_PDF_{int(time.time())}"
+        display_title = f"{file.filename} (PDF Document)"
+
+        doc = Document(
+            page_content=extracted_text,
+            metadata={"source_url": pdf_id, "title": display_title}
+        )
+
+        # 3. Save Metadata to SQLite
+        conn = sqlite3.connect("website_data.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO website_pages (url, title, extracted_json) VALUES (?, ?, ?)",
+            (pdf_id, display_title, json.dumps({"summary": extracted_text[:500]}))
+        )
+        conn.commit()
+        conn.close()
+
+        # 4. Chunking & Indexing to Chroma Vector DB
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=300)
+        splits = text_splitter.split_documents([doc])
+
+        persist_dir = "./chroma_db_website"
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
+        
+        vectorstore.add_documents(splits)
+
+        # Reload Memory Live
+        global_retriever = load_existing_retriever()
+
+        return {"status": "success", "message": f"Successfully processed and indexed PDF '{file.filename}' into AI Memory!"}
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {str(e)}")
