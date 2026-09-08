@@ -15,6 +15,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.tools import tool
 from langchain_community.retrievers import BM25Retriever
@@ -188,7 +189,8 @@ def crawl_and_index_website(target_url):
     # Save Chunks to Vector DB
     persist_dir = "./chroma_db_website"
     # persist_dir = "./chroma_db_website_old"
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    # embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings, persist_directory=persist_dir)
 
     # Setup Hybrid Search
@@ -217,7 +219,8 @@ def load_existing_retriever():
     persist_dir = "./chroma_db_website"
     # persist_dir = "./chroma_db_website_old"
     if os.path.exists(persist_dir) and len(os.listdir(persist_dir)) > 0:
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        # embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
         vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
         
         existing_data = vectorstore.get()
@@ -390,11 +393,11 @@ for msg in st.session_state.messages:
 
 # Check if website is indexed before enabling chat
 if st.session_state.retriever is None:
-    st.warning("👈 කරුණාකර පළමුව Sidebar එකෙන් Website URL එක ලබාදී 'Scrape & Re-build Index' button එක click කරන්න.")
-    # Website එක Scrape කරලා නැත්නම් Chat එක Disable කරනවා
+    st.warning("👈 please index a website first to enable the AI chat functionality.")
+    # if no website has been indexed yet, disable the chat input
     user_input = st.chat_input("Please index a website first...", disabled=True, key="disabled_chat")
 else:
-    # Website එක Scrape කරලා නම් Chat එක Enable කරනවා
+    # if a website has been indexed, enable the chat input
     user_input = st.chat_input("Ask anything about the indexed website...", key="enabled_chat")
 
 if user_input:
