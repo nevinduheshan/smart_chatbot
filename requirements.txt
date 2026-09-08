@@ -11,7 +11,5 @@ langchain-core
 langchain-community
 langchain-classic
 langchain-openai
-langchain-huggingface
 langchain-chroma
 chromadb
-sentence-transformers
