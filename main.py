@@ -18,6 +18,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.tools import tool
 from langchain_community.retrievers import BM25Retriever
@@ -62,7 +63,8 @@ def init_sql_db():
 def load_existing_retriever():
     persist_dir = "./chroma_db_website"
     if os.path.exists(persist_dir) and len(os.listdir(persist_dir)) > 0:
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        # embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
         vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
         existing_data = vectorstore.get()
         if existing_data and existing_data.get("documents"):
@@ -289,7 +291,8 @@ async def add_url_endpoint(request: IndexRequest):
             splits = text_splitter.split_documents(documents)
 
             persist_dir = "./chroma_db_website"
-            embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+            # embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+            embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
             vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
             
             vectorstore.add_documents(splits)
@@ -353,7 +356,8 @@ async def add_text_endpoint(request: RawTextRequest):
         splits = text_splitter.split_documents([doc])
 
         persist_dir = "./chroma_db_website"
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        # embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
         vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
         
         vectorstore.add_documents(splits)
@@ -409,7 +413,8 @@ async def add_pdf_endpoint(file: UploadFile = File(...)):
         splits = text_splitter.split_documents([doc])
 
         persist_dir = "./chroma_db_website"
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        # embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
         vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
         
         vectorstore.add_documents(splits)
