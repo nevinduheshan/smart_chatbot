@@ -4,13 +4,13 @@
         if (!text) return '';
         let html = text;
 
-        // Phone Numbers එකම පේළියේ තබා ගැනීම
+        // display phone numbers in a single line
         html = html.replace(/(\+94[\d\s]+)/g, '<span style="white-space: nowrap;">$1</span>');
 
-        // **Bold** වෙනුවට <strong>
+        // **Bold** replace <strong>
         html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 
-        // [Title](URL) වෙනුවට Clickable HTML Link
+        // [Title](URL) replace Clickable HTML Link
         html = html.replace(/\[(.*?)\]\((https?:\/\/[^\s\)]+)\)/g, 
             '<a href="$2" target="_blank" style="color: #0066FF; text-decoration: underline; font-weight: 600;">$1</a>'
         );
@@ -124,7 +124,7 @@
     if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
         recognition.continuous = false;
-        recognition.lang = 'en-US'; // English කතා කිරීමට en-US (සිංහල සඳහා 'si-LK' භාවිත කළ හැක)
+        recognition.lang = 'en-US'; // for the English language en-US (can use sinhala 'si-LK')
 
         let isListening = false;
 
@@ -146,7 +146,7 @@
         recognition.onresult = (event) => {
             const transcript = event.results[0][0].transcript;
             input.value = transcript;
-            handleSend(); // කතා කර ඉවර වූ පසු Auto Send වීම
+            handleSend(); // auto send after speech recognition
         };
 
         recognition.onerror = (event) => {
@@ -161,7 +161,7 @@
             input.placeholder = 'Ask a question...';
         };
     } else {
-        // Browser එකෙහි Web Speech support නැත්නම් Mic Icon එක සඟවයි
+        // If SpeechRecognition is not supported, hide the mic button
         micBtn.style.display = 'none';
     }
 })();

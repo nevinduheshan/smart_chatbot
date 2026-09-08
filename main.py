@@ -8,11 +8,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from firecrawl import FirecrawlApp
 from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, File, UploadFile
 
+import time
+import pypdf
 import cohere
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.tools import tool
@@ -25,7 +29,7 @@ load_dotenv()
 
 app = FastAPI(title="Smart Media RAG AI API")
 
-# Cross-Origin Resource Sharing (CORS) - ඕනෑම Website එකක සිට Call කිරීමට ඉඩ දීම
+# Cross-Origin Resource Sharing (CORS) - Allow calling from any website
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -78,6 +82,7 @@ def load_existing_retriever():
 @app.on_event("startup")
 def startup_event():
     global global_retriever
+    init_sql_db()
     global_retriever = load_existing_retriever()
     print("✅ Vector Database and Retriever successfully loaded on startup!")
 
@@ -89,7 +94,7 @@ def search_website_content(query: str) -> str:
         return "No website context available."
 
     search_query = query
-    # Phone, Contact හෝ Email ගැන අහනවා නම් Search Query එකට Keywords එකතු කිරීම
+    # If asking about Phone, Contact or Email, add keywords to Search Query
     if any(k in query.lower() for k in ["phone", "contact", "number", "call", "email"]):
         search_query += " +94773950883 +94777999921 info@SmartAnnualReport.com contact us"
 
@@ -110,9 +115,14 @@ def search_website_content(query: str) -> str:
         results = []
         for hit in rerank_response.results:
             doc = initial_docs[hit.index]
-            url = doc.metadata.get("source_url", "https://www.smartannualreport.com")
+            url = doc.metadata.get("source_url", "NO_URL")
             title = doc.metadata.get("title", "Smart Media Page")
-            results.append(f"Page Title: {title}\nPage URL: {url}\nContent:\n{doc.page_content}")
+            
+            # 💡 If custom text, notify AI that no URL is attached
+            if url == "NO_URL" or not url:
+                results.append(f"Content (Internal Note - NO URL ATTACHED):\n{doc.page_content}")
+            else:
+                results.append(f"Page Title: {title}\nPage URL: {url}\nContent:\n{doc.page_content}")
 
         return "\n\n---\n\n".join(results)
 
@@ -142,28 +152,36 @@ def query_structured_sql_data(query: str) -> str:
 tools = [search_website_content, query_structured_sql_data]
 
 # LLM Setup
-llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
+# llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", (
         "You are the Official AI Assistant for 'Smart Media (Pvt) Limited'.\n\n"
+
         "STRICT CONTACT DETAILS RULES:\n"
         "1. ONLY include full contact details (Phone numbers, Email, Physical Addresses) when the user EXPLICITLY asks for contact information, phone numbers, address, or location.\n"
-        "2. NEVER append 'Contact Us' sections, phone numbers, or addresses at the end of general answers (such as questions about services, architecture, or technical topics).\n\n"
+        "2. NEVER append 'Contact Us' sections, phone numbers, or addresses at the end of general answers (such as questions about services, architecture, or technical topics).\n"
+        "   Official Details:\n"
         "   - Phone Numbers: +94773950883, +94777999921\n"
         "   - Email: info@SmartAnnualReport.com\n"
         "   - Corporate Office: 23/2, Independence Avenue, Colombo 00700, Sri Lanka\n"
         "   - Development Centre: 29/2, Independence Avenue, Colombo 00700, Sri Lanka\n\n"
+
         "STRICT RULES FOR SERVICES:\n"
         "1. When asked 'what services do you offer?', ALWAYS prioritize Smart Media's 5 Core Homepage Services:\n"
-        "   - 1. Strategic Content and Storytelling\n"
-        "   - 2. Advisory on Global Frameworks, Standards, and Jurisdictional Compliance\n"
-        "   - 3. Investor-Grade Design and Production\n"
-        "   - 4. Digital-First and End-to-End HTML Reports (with Interactive PDF-Twins)\n"
-        "   - 5. Video Annual Reports\n\n"
-        "2. ALWAYS include clickable Markdown source links at the end of every response:\n"
-        "   Format: 🔗 **Source:** [Page Title](https://exact-url-here.com)\n"
-        "3. If details (like custom pricing) are missing, link to: [Smart Media Contact Us](https://www.smartannualreport.com/contact)"
+        "   1. Strategic Content and Storytelling\n"
+        "   2. Advisory on Global Frameworks, Standards, and Jurisdictional Compliance\n"
+        "   3. Investor-Grade Design and Production\n"
+        "   4. Digital-First and End-to-End HTML Reports (with Interactive PDF-Twins)\n"
+        "   5. Video Annual Reports\n\n"
+
+        "STRICT LINK & CITATION RULES:\n"
+        "1. NEVER construct, guess, fabricate, or invent sub-URLs (e.g., NEVER write /why-choose-us or /about-us unless explicitly provided in tool output).\n"
+        "2. You MUST strictly use the EXACT URL provided under 'EXACT MANDATORY URL' or 'Page URL' in the tool response.\n"
+        "3. DO NOT include any Source link if the information originates from an internal custom note or has 'NO_URL'.\n"
+        "4. Format for valid links: 🔗 **Source:** [Page Title](exact-url-from-tool)\n"
+        "5. If requested details (like custom pricing) are missing, link strictly to: [Smart Media Contact Us](https://www.smartannualreport.com/contact)\n"
     )),
     MessagesPlaceholder(variable_name="chat_history", optional=True),
     ("human", "{input}"),
@@ -194,22 +212,28 @@ class ChatRequest(BaseModel):
 
 class IndexRequest(BaseModel):
     url: str
+    title: str = None
+
+class RawTextRequest(BaseModel):
+    title: str
+    text: str
+
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
-        # Agent එක Call කිරීම
+        # Invoking the agent
         raw_response = agent_executor.invoke({"input": request.message})
         clean_answer = extract_clean_text(raw_response.get("output", "Unable to process your request."))
         return {"status": "success", "response": clean_answer}
     
     except Exception as e:
-        # 🔍 Terminal එකේ හරියටම Error එක කුමක්දැයි Print කිරීම (Debug සඳහා)
+        # 🔍 Print the exact error in the terminal for debugging purposes
         print("\n❌ [ERROR IN AGENT EXECUTOR]:")
         traceback.print_exc()
         print("----------------------------------------\n")
         
-        # User ට Clean Fallback Message එකක් යැවීම
+        # User-friendly Error Message Return 
         return {
             "status": "error", 
             "response": "⚠️ I encountered an issue processing this complex request. Please try asking in a slightly simpler way or check the API limits."
@@ -220,14 +244,14 @@ async def add_url_endpoint(request: IndexRequest):
     """Crawl a new URL, persist documents to Vector DB & SQLite, and reload memory live."""
     global global_retriever
     
-    # 🔒 1. Domain Lock: Smart Media වෙබ් අඩවියට පමණක් සීමා කිරීම
     target_url = request.url.strip()
+    user_title = request.title.strip() if request.title else ""
+
     if not target_url.startswith("https://www.smartannualreport.com"):
         raise HTTPException(status_code=403, detail="Access Denied: You can only index pages from https://www.smartannualreport.com")
 
     try:
         firecrawl_app = FirecrawlApp(api_key=os.getenv("FIRECRAWL_API_KEY"))
-        # 2. Limit එක 2කට අඩු කිරීම (මොකද අපි දෙන්නේ Specific Page එකක් නිසා මුළු සයිට් එකම යන්න ඕනේ නෑ)
         crawl_result = firecrawl_app.crawl(
             url=target_url,
             limit=2, 
@@ -246,7 +270,10 @@ async def add_url_endpoint(request: IndexRequest):
         for page in page_data_list:
             markdown_text = page.get("markdown", "") if isinstance(page, dict) else getattr(page, "markdown", "")
             page_url = page.get("metadata", {}).get("sourceURL", target_url) if isinstance(page, dict) else target_url
-            page_title = page.get("metadata", {}).get("title", "Indexed Page") if isinstance(page, dict) else "Indexed Page"
+            
+            # 💡 Title Priority: Admin Input > Firecrawl Scraped Title > Default Title
+            scraped_title = page.get("metadata", {}).get("title", "") if isinstance(page, dict) else ""
+            page_title = user_title or scraped_title or "Smart Media Page"
 
             if markdown_text:
                 documents.append(Document(page_content=markdown_text, metadata={"source_url": page_url, "title": page_title}))
@@ -268,12 +295,12 @@ async def add_url_endpoint(request: IndexRequest):
             vectorstore.add_documents(splits)
             global_retriever = load_existing_retriever()
             
-            return {"status": "success", "message": f"Successfully indexed new page from Smart Media!"}
+            return {"status": "success", "message": f"Successfully indexed '{page_title}' into AI Memory!"}
             
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
-
+    
 @app.get("/api/admin/stats")
 async def get_stats_endpoint():
     """Retrieve indexed page statistics and list for the Dashboard UI."""
@@ -291,3 +318,107 @@ async def get_stats_endpoint():
         }
     except Exception:
         return {"total_pages": 0, "pages": []}
+
+
+@app.post("/api/admin/add-text")
+async def add_text_endpoint(request: RawTextRequest):
+    """Admin endpoint to manually add custom text/paragraphs into Vector DB & SQLite."""
+    global global_retriever
+    
+    title = request.title.strip()
+    text = request.text.strip()
+    
+    if not title or not text:
+        raise HTTPException(status_code=400, detail="Title and Content cannot be empty.")
+
+    try:
+        unique_note_id = f"NO_URL_NOTE_{int(time.time())}"
+        display_title = f"{title} (Internal Note)"
+
+        doc = Document(
+            page_content=text,
+            metadata={"source_url": unique_note_id, "title": display_title}
+        )
+
+        conn = sqlite3.connect("website_data.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO website_pages (url, title, extracted_json) VALUES (?, ?, ?)",
+            (unique_note_id, display_title, json.dumps({"summary": text[:500]}))
+        )
+        conn.commit()
+        conn.close()
+
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=300)
+        splits = text_splitter.split_documents([doc])
+
+        persist_dir = "./chroma_db_website"
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
+        
+        vectorstore.add_documents(splits)
+        global_retriever = load_existing_retriever()
+
+        return {"status": "success", "message": f"Successfully indexed custom text '{title}' into AI Memory!"}
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to index text: {str(e)}")
+
+@app.post("/api/admin/add-pdf")
+async def add_pdf_endpoint(file: UploadFile = File(...)):
+    """Admin endpoint to upload and dynamically index PDF files into Vector DB & SQLite."""
+    global global_retriever
+
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
+
+    try:
+        # 1. Read PDF text using pypdf
+        pdf_reader = pypdf.PdfReader(file.file)
+        extracted_text = ""
+        for page in pdf_reader.pages:
+            text = page.extract_text()
+            if text:
+                extracted_text += text + "\n\n"
+
+        if not extracted_text.strip():
+            raise HTTPException(status_code=400, detail="Could not extract readable text from PDF (it might be a scanned image).")
+
+        # 2. Unique Identifier & Document Object
+        pdf_id = f"NO_URL_PDF_{int(time.time())}"
+        display_title = f"{file.filename} (PDF Document)"
+
+        doc = Document(
+            page_content=extracted_text,
+            metadata={"source_url": pdf_id, "title": display_title}
+        )
+
+        # 3. Save Metadata to SQLite
+        conn = sqlite3.connect("website_data.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO website_pages (url, title, extracted_json) VALUES (?, ?, ?)",
+            (pdf_id, display_title, json.dumps({"summary": extracted_text[:500]}))
+        )
+        conn.commit()
+        conn.close()
+
+        # 4. Chunking & Indexing to Chroma Vector DB
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=300)
+        splits = text_splitter.split_documents([doc])
+
+        persist_dir = "./chroma_db_website"
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
+        
+        vectorstore.add_documents(splits)
+
+        # Reload Memory Live
+        global_retriever = load_existing_retriever()
+
+        return {"status": "success", "message": f"Successfully processed and indexed PDF '{file.filename}' into AI Memory!"}
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {str(e)}")
