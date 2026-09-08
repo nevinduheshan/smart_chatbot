@@ -212,6 +212,7 @@ class ChatRequest(BaseModel):
 
 class IndexRequest(BaseModel):
     url: str
+    title: str = None
 
 class RawTextRequest(BaseModel):
     title: str
@@ -243,14 +244,14 @@ async def add_url_endpoint(request: IndexRequest):
     """Crawl a new URL, persist documents to Vector DB & SQLite, and reload memory live."""
     global global_retriever
     
-    # 🔒 1. Domain Lock: Smart Media 
     target_url = request.url.strip()
+    user_title = request.title.strip() if request.title else ""
+
     if not target_url.startswith("https://www.smartannualreport.com"):
         raise HTTPException(status_code=403, detail="Access Denied: You can only index pages from https://www.smartannualreport.com")
 
     try:
         firecrawl_app = FirecrawlApp(api_key=os.getenv("FIRECRAWL_API_KEY"))
-        # 2. reduce the limit to 2 pages and set a poll interval of 2 seconds for faster response
         crawl_result = firecrawl_app.crawl(
             url=target_url,
             limit=2, 
@@ -269,7 +270,10 @@ async def add_url_endpoint(request: IndexRequest):
         for page in page_data_list:
             markdown_text = page.get("markdown", "") if isinstance(page, dict) else getattr(page, "markdown", "")
             page_url = page.get("metadata", {}).get("sourceURL", target_url) if isinstance(page, dict) else target_url
-            page_title = page.get("metadata", {}).get("title", "Indexed Page") if isinstance(page, dict) else "Indexed Page"
+            
+            # 💡 Title Priority: Admin Input > Firecrawl Scraped Title > Default Title
+            scraped_title = page.get("metadata", {}).get("title", "") if isinstance(page, dict) else ""
+            page_title = user_title or scraped_title or "Smart Media Page"
 
             if markdown_text:
                 documents.append(Document(page_content=markdown_text, metadata={"source_url": page_url, "title": page_title}))
@@ -291,12 +295,12 @@ async def add_url_endpoint(request: IndexRequest):
             vectorstore.add_documents(splits)
             global_retriever = load_existing_retriever()
             
-            return {"status": "success", "message": f"Successfully indexed new page from Smart Media!"}
+            return {"status": "success", "message": f"Successfully indexed '{page_title}' into AI Memory!"}
             
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Indexing failed: {str(e)}")
-
+    
 @app.get("/api/admin/stats")
 async def get_stats_endpoint():
     """Retrieve indexed page statistics and list for the Dashboard UI."""
