@@ -52,7 +52,6 @@ try:
         limit=20,
         poll_interval=2,
         scrape_options={'formats': ['markdown']},
-        # 💡 Fixed Regex Syntax for RE2 Engine
         exclude_paths=['.*/reports/.*', '.*/annual-report/.*']
     )
 except Exception as e:
